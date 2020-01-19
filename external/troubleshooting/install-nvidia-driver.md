@@ -24,6 +24,74 @@ If you do happen to get proprietary drivers working on your Qubes system (via in
 [Hardware Compatibility List (HCL)](/doc/hcl/#generating-and-submitting-new-reports )
 Add your computer, graphics card, and installation steps you did to get everything working.
 
+# Instructions
+The general process will be to get the kernel headers for the kernel being used in dom0, build the kernel module (.ko file), copy said kernel module to dom0 and load it.  Instructions were largely taken from [Issue 2908](https://github.com/QubesOS/qubes-issues/issues/2908).
+
+## Kernel Headers
+After several hours, the author of this document was unable to obtain the kernel headers for 4.19.94-1.pvops.qubes.x86_64 on a Qube (tried Fedora 25/27/28/29/30).  As a result, dom0 is used to download the .rpm containing your kernel headers.
+
+For Qubes 3.2:
+`sudo qubes-dom0-update --action=download kernel-devel`
+
+For Qubes 4.0:
+`sudo qubes-dom0-update --downloadonly kernel-devel`
+If the kernel-devel package was already downloaded in dom0, the above command will error out and you should use the command below instead:
+`sudo qubes-dom0-update --downloadonly --action=reinstall kernel-devel`
+
+## Building the Kernel Module (Debian to the Rescue)
+Next, we are going to use Debian to build the kernel module.  Maybe there's a way to do it with Fedora, and if anyone is ever able to figure that out, please document it here.  In the meantime, we'll use Debian, because it's what works.
+
+Create a Debian-based Qube.  In this example, we are using Qubes 4.0.3rc1 and our Qube is named "deb" and is based on the debian-10 template.  In dom0, we copy the kernel headers RPM file to our Debian VM.
+
+`qvm-copy-to-vm dev /var/lib/qubes/updates/rpm/kernel-devel-$(uname -r).rpm`
+
+In our Debian VM, we install alien to convert the .rpm to a .deb and install it.
+
+```
+sudo aptitude install alien
+sudo alien kernel-devel-4.19.84-1.pvops.qubes.x86_64.rpm
+sudo dpkg -i ./kernel-devel_4.19.84-2_amd64.deb
+```
+
+Next, we download the closed source nVidia driver [from nVidia's site](https://www.nvidia.com/Download/index.aspx).  In this example, NVIDIA-Linux-x86_64-440.44.run is used.  The next steps will be to extract the files from nVidia's package (do not install any extra things such as 32-bit compatibility libraries, libglvnd files or modify X configs), and build the kernel module.
+
+```
+sudo ./NVIDIA-Linux-x86_64-440.44.run --ui=none --no-x-check --keep --no-nouveau-check --no-kernel-module
+cd NVIDIA-Linux-x86_64-440.44/kernel/
+sudo IGNORE_CC_MISMATCH=1 make
+```
+
+Once compiled, nvidia.ko should be copied to /home/user so it is easier to pull into dom0.
+
+Note: The IGNORE_CC_MISMATCH is required if using a different version of the compiler than what was used to compile the kernel.  Getting a specific version of Debian may allow getting an old version of gcc (which matches that which was used to create the kernel) and the IGNORE_CC_MISMATCH=1 part can be omitted.  This would be preferred, and if a specific solution is found, it should be documented here.
+
+Side note: nVidia's kernel module wouldn't compile out of the box (error about "latent_entropy" not being define), its Makefile doesn't respect CFLAGS, and the author of this document was unable to successfully hack the Makefile to work around this, so the kernel headers were modified to achieve the same effect.  The patch is below, and this may not have been necessary if an older version of GCC was used (the same version which was used to compile the kernel, 6.4.1 in this case, instead of 8.3.0-6 or 7.4.0-6).  This **should** be a safe modification, since it should just be linking to the function and care not for how the kernel actually implements it.
+```
+--- /usr/lib/modules/4.19.94-1.pvops.qubes.x86_64/build/include/linux/random.h.bak	2020-01-19 15:26:30.666000000 -0600
++++ /usr/lib/modules/4.19.94-1.pvops.qubes.x86_64/build/include/linux/random.h	2020-01-19 15:26:53.370000000 -0600
+@@ -20,7 +20,7 @@
+ 
+ extern void add_device_randomness(const void *, unsigned int);
+ 
+-#if defined(CONFIG_GCC_PLUGIN_LATENT_ENTROPY) && !defined(__CHECKER__)
++#if defined(CONFIG_GCC_PLUGIN_LATENT_ENTROPY) && !defined(__CHECKER__) && 0
+ static inline void add_latent_entropy(void)
+ {
+ 	add_device_randomness((const void *)&latent_entropy,
+```
+
+## Loading Kernel Module in dom0
+Now we need to get the kernel module into dom0 where it can be loaded.
+
+```
+qvm-run --pass-io deb 'cat /home/user/nvidia.ko' > nvidia.ko
+chmod +x nvidia.ko
+sudo insmod nvidia.ko
+```
+
+At this point the kernel module should be loaded in the kernel.  However, we still need to set it up to automatically load on the next boot and block out the `nouveau` driver.
+
+
 ## RpmFusion packages
 
 There are rpm packages with all necessary software on rpmfusion. The only package you have to compile is the kernel module (but there is a ready built src.rpm package).
@@ -39,7 +107,7 @@ yumdownloader --source nvidia-kmod
 
 ### Build kernel package
 
-You will need at least kernel-devel (matching your Qubes dom0 kernel), rpmbuild tool and kmodtool, and then you can use it to build the package:
+You will need at least kernel-devel (matching your Qubes dom0 kernel), rpmbuild tool and kmodtool, and then you can use it to build the package.  The example below uses the 260 driver, but different hardware will require different versions of the driver.  There's [a guide](https://www.if-not-true-then-false.com/2015/fedora-nvidia-guide/) to help you determine the correct one.
 
 ~~~
 sudo dnf install kernel-devel rpm-build kmodtool
@@ -48,11 +116,14 @@ rpmbuild --nodeps -D "kernels `uname -r`" --rebuild nvidia-kmod-260.19.36-1.fc13
 
 In the above command, replace `uname -r` with kernel version from your Qubes dom0 (if something goes wrong, see the [Manual Installation](#manual-installation) instructions below).  If everything went right, you have now complete packages with nvidia drivers for the Qubes system.  Transfer them to dom0 (see [Copying from (and to) dom0](https://www.qubes-os.org/doc/copy-from-dom0/)) and install (using standard "yum install /path/to/file").
 
-Alternative way to get the kernel drivers, is to run the commands below in a Qube running Fedora 29 (for Qubes 4.0.3).  The specific version is required because Fedora 30 doesn't have support for the 4.19 kernel, they've moved on to 5.3 and later.  If you don't have a Fedora 29 template, you can get one by running `sudo qubes-dom0-update qubes-template-fedora29-minimal` (see [TemplateVMs](https://www.qubes-os.org/doc/templates/) for more details).
+Alternative way to get the kernel drivers, is to run the commands below in a Qube running Fedora 25 (for Qubes 4.0.3; 4.19.x kernel).  The specific version is required because Fedora 30 doesn't have support for the 4.19 kernel, they've moved on to 5.3 and later.  If you don't have a Fedora 29 template, you can get one by running `sudo qubes-dom0-update qubes-template-fedora-29` in dom0 (see [TemplateVMs](https://www.qubes-os.org/doc/templates/) for more details).
+
 ~~~
 # From your Fedora Qube that you'll be using to get the kernel...
 sudo dnf update
-sudo dnf install kernel-devel kernel-headers gcc make
+# If `uname -r` reports the same kernel is running in your qube and dom0, you can use
+# the command below, if not, replace $(uname -r) with the output from uname -r on dom0
+sudo dnf install kernel-devel-$(uname -r) kernel-headers-$(uname -r) gcc make
 # Oh no!  Fedora 30 doesn't seem to have anything for 4.19*
 ~~~
 
@@ -76,7 +147,7 @@ Reboot.
 
 ## Manual installation
 
-This process is quite complicated: First - download the source from nvidia.com site. Here "NVIDIA-Linux-x86\_64-260.19.44.run" is used. Copy it to dom0. Every next step is done in dom0.
+This process is quite complicated: First - download the source [from  site](https://www.nvidia.com/Download/index.aspx). Here "NVIDIA-Linux-x86\_64-260.19.44.run" is used. Copy it to dom0. Every next step is done in dom0.
 
 See [this page](/doc/copy-to-dom0/) for instructions on how to transfer files to Dom0 (where there is normally no networking).
 
