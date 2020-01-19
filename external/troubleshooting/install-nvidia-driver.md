@@ -59,9 +59,8 @@ Next, we download the closed source nVidia driver [from nVidia's site](https://w
 sudo ./NVIDIA-Linux-x86_64-440.44.run --ui=none --no-x-check --keep --no-nouveau-check --no-kernel-module
 cd NVIDIA-Linux-x86_64-440.44/kernel/
 sudo IGNORE_CC_MISMATCH=1 make
+cp nvidia.ko /home/user
 ```
-
-Once compiled, nvidia.ko should be copied to /home/user so it is easier to pull into dom0.
 
 Note: The IGNORE_CC_MISMATCH is required if using a different version of the compiler than what was used to compile the kernel.  Getting a specific version of Debian may allow getting an old version of gcc (which matches that which was used to create the kernel) and the IGNORE_CC_MISMATCH=1 part can be omitted.  This would be preferred, and if a specific solution is found, it should be documented here.
 
