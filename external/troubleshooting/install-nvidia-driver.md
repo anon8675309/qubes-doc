@@ -30,7 +30,7 @@ There are rpm packages with all necessary software on rpmfusion. The only packag
 
 ### Download packages
 
-You will need any Fedora 18 system to download and build packages. You can use Qubes AppVM for it, but it isn't necessary. To download packages from rpmfusion - add this repository to your yum configuration (instructions are on their website). Then download packages using yumdownloader:
+You will need any Fedora system (18 or later) to download and build packages. You can use Qubes AppVM for it, but it isn't necessary. To download packages from rpmfusion - add this repository to your yum configuration (instructions are on their website). Then download packages using yumdownloader:
 
 ~~~
 yumdownloader --resolve xorg-x11-drv-nvidia
@@ -42,11 +42,18 @@ yumdownloader --source nvidia-kmod
 You will need at least kernel-devel (matching your Qubes dom0 kernel), rpmbuild tool and kmodtool, and then you can use it to build the package:
 
 ~~~
-yum install kernel-devel rpm-build kmodtool
+sudo dnf install kernel-devel rpm-build kmodtool
 rpmbuild --nodeps -D "kernels `uname -r`" --rebuild nvidia-kmod-260.19.36-1.fc13.3.src.rpm
 ~~~
 
-In the above command, replace `uname -r` with kernel version from your Qubes dom0. If everything went right, you have now complete packages with nvidia drivers for the Qubes system. Transfer them to dom0 (e.g. using a USB stick) and install (using standard "yum install /path/to/file").
+In the above command, replace `uname -r` with kernel version from your Qubes dom0 (if something goes wrong, see the [Manual Installation](#manual-installation) instructions below).  If everything went right, you have now complete packages with nvidia drivers for the Qubes system.  Transfer them to dom0 (see [Copying from (and to) dom0](https://www.qubes-os.org/doc/copy-from-dom0/)) and install (using standard "yum install /path/to/file").
+
+Alternative way to get the kernel drivers, is to run this in a Qube:
+~~~
+sudo dnf update
+sudo dnf install kernel-devel kernel-headers gcc make
+# Fedora 30 doesn't seem to have anything for 4.19*
+~~~
 
 Then you need to disable nouveau (normally it is done by install scripts from nvidia package, but unfortunately it isn't compatible with Qubes...):
 
@@ -83,6 +90,8 @@ Install libraries, Xorg driver, configuration utilities. This can by done by nvi
 ~~~
 ./NVIDIA-Linux-x86_64-260.19.44.run --ui=none --no-x-check --keep --no-nouveau-check --no-kernel-module
 ~~~
+
+When prompted, do install NVIDIA's 32-bit compatibility libraries, overwrite existing libglvnd libraries, and automatically update your X configuration.
 
 ### Kernel module
 
