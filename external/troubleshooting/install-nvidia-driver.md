@@ -48,11 +48,12 @@ rpmbuild --nodeps -D "kernels `uname -r`" --rebuild nvidia-kmod-260.19.36-1.fc13
 
 In the above command, replace `uname -r` with kernel version from your Qubes dom0 (if something goes wrong, see the [Manual Installation](#manual-installation) instructions below).  If everything went right, you have now complete packages with nvidia drivers for the Qubes system.  Transfer them to dom0 (see [Copying from (and to) dom0](https://www.qubes-os.org/doc/copy-from-dom0/)) and install (using standard "yum install /path/to/file").
 
-Alternative way to get the kernel drivers, is to run this in a Qube:
+Alternative way to get the kernel drivers, is to run the commands below in a Qube running Fedora 29 (for Qubes 4.0.3).  The specific version is required because Fedora 30 doesn't have support for the 4.19 kernel, they've moved on to 5.3 and later.  If you don't have a Fedora 29 template, you can get one by running `sudo qubes-dom0-update qubes-template-fedora29-minimal` (see [TemplateVMs](https://www.qubes-os.org/doc/templates/) for more details).
 ~~~
+# From your Fedora Qube that you'll be using to get the kernel...
 sudo dnf update
 sudo dnf install kernel-devel kernel-headers gcc make
-# Fedora 30 doesn't seem to have anything for 4.19*
+# Oh no!  Fedora 30 doesn't seem to have anything for 4.19*
 ~~~
 
 Then you need to disable nouveau (normally it is done by install scripts from nvidia package, but unfortunately it isn't compatible with Qubes...):
