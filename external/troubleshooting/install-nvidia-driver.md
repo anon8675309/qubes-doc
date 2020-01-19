@@ -85,11 +85,84 @@ Now we need to get the kernel module into dom0 where it can be loaded.
 ```
 qvm-run --pass-io deb 'cat /home/user/nvidia.ko' > nvidia.ko
 chmod +x nvidia.ko
-sudo insmod nvidia.ko
+sudo insmod ./nvidia.ko
+```
+
+Sadly, even with these updated instructions, the kernel module isn't getting loaded.  The author has spent about 5 hour on this and is giving up and buying an AMD video card (as the warnings suggested).  Hopefully this is at least getting the documentation to be closer to correct and someone with more patients will come along, figure it out and update the documentation again with a solution.
+
+Below is the current error that is preventing the kernel module from being loaded:
+```
+$ sudo insmod /lib/modules/4.19.94-1.pvops.qubes.x86_64/nvidia.ko
+insmod: ERROR: could not insert module /lib/modules/4.19.94-1.pvops.qubes.x86_64/nvidia.ko: Unknown symbol in module
+$ sudo modinfo /lib/modules/4.19.94-1.pvops.qubes.x86_64/nvidia.ko
+filename:       /lib/modules/4.19.94-1.pvops.qubes.x86_64/nvidia.ko
+alias:          char-major-195-*
+version:        440.44
+supported:      external
+license:        NVIDIA
+srcversion:     76C1A18886D409B7BFE6518
+alias:          pci:v000010DEd*sv*sd*bc03sc02i00*
+alias:          pci:v000010DEd*sv*sd*bc03sc00i00*
+depends:        ipmi_msghandler
+retpoline:      Y
+name:           nvidia
+vermagic:       4.19.94-1.pvops.qubes.x86_64 SMP mod_unload 
+parm:           NvSwitchRegDwords:NvSwitch regkey (charp)
+parm:           NVreg_Mobile:int
+parm:           NVreg_ResmanDebugLevel:int
+parm:           NVreg_RmLogonRC:int
+parm:           NVreg_ModifyDeviceFiles:int
+parm:           NVreg_DeviceFileUID:int
+parm:           NVreg_DeviceFileGID:int
+parm:           NVreg_DeviceFileMode:int
+parm:           NVreg_InitializeSystemMemoryAllocations:int
+parm:           NVreg_UsePageAttributeTable:int
+parm:           NVreg_MapRegistersEarly:int
+parm:           NVreg_RegisterForACPIEvents:int
+parm:           NVreg_EnablePCIeGen3:int
+parm:           NVreg_EnableMSI:int
+parm:           NVreg_TCEBypassMode:int
+parm:           NVreg_EnableStreamMemOPs:int
+parm:           NVreg_EnableBacklightHandler:int
+parm:           NVreg_RestrictProfilingToAdminUsers:int
+parm:           NVreg_PreserveVideoMemoryAllocations:int
+parm:           NVreg_DynamicPowerManagement:int
+parm:           NVreg_EnableUserNUMAManagement:int
+parm:           NVreg_MemoryPoolSize:int
+parm:           NVreg_KMallocHeapMaxSize:int
+parm:           NVreg_VMallocHeapMaxSize:int
+parm:           NVreg_IgnoreMMIOCheck:int
+parm:           NVreg_NvLinkDisable:int
+parm:           NVreg_RegisterPCIDriver:int
+parm:           NVreg_RegistryDwords:charp
+parm:           NVreg_RegistryDwordsPerDevice:charp
+parm:           NVreg_RmMsg:charp
+parm:           NVreg_GpuBlacklist:charp
+parm:           NVreg_TemporaryFilePath:charp
+parm:           NVreg_AssignGpus:charp
 ```
 
 At this point the kernel module should be loaded in the kernel.  However, we still need to set it up to automatically load on the next boot and block out the `nouveau` driver.
 
+## Updating Bootloader
+The next step is to blacklist the nouveau module so it doesn't try to take priority over the nVidia driver we want to use.  To do this, we add a parameter to the kernel when starting dom0.
+
+Edit /etc/default/grub:
+
+~~~
+GRUB_CMDLINE_LINUX="quiet rhgb nouveau.modeset=0 rd.driver.blacklist=nouveau video=vesa:off"
+~~~
+
+Regenerate grub configuration:
+
+~~~
+grub2-mkconfig -o /boot/grub2/grub.cfg
+~~~
+
+Reboot.
+
+# Legacy Instructions
+This section contains older documentation which no longer works with modern releases of Fedora (Fedora 30 at the time of writing).
 
 ## RpmFusion packages
 
@@ -97,7 +170,7 @@ There are rpm packages with all necessary software on rpmfusion. The only packag
 
 ### Download packages
 
-You will need any Fedora system (18 or later) to download and build packages. You can use Qubes AppVM for it, but it isn't necessary. To download packages from rpmfusion - add this repository to your yum configuration (instructions are on their website). Then download packages using yumdownloader:
+You will need any Fedora system 18 to download and build packages. You can use Qubes AppVM for it, but it isn't necessary. To download packages from rpmfusion - add this repository to your yum configuration (instructions are on their website). Then download packages using yumdownloader:
 
 ~~~
 yumdownloader --resolve xorg-x11-drv-nvidia
@@ -124,25 +197,10 @@ sudo dnf update
 # the command below, if not, replace $(uname -r) with the output from uname -r on dom0
 sudo dnf install kernel-devel-$(uname -r) kernel-headers-$(uname -r) gcc make
 # Oh no!  Fedora 30 doesn't seem to have anything for 4.19*
+# FIXME (or use the instructions above)
 ~~~
 
-Then you need to disable nouveau (normally it is done by install scripts from nvidia package, but unfortunately it isn't compatible with Qubes...):
-
-Edit /etc/default/grub:
-
-~~~
-GRUB_CMDLINE_LINUX="quiet rhgb nouveau.modeset=0 rd.driver.blacklist=nouveau video=vesa:off"
-~~~
-
-Regenerate grub configuration:
-
-~~~
-grub2-mkconfig -o /boot/grub2/grub.cfg
-~~~
-
-Reboot.
-
-
+Then you need to disable nouveau (normally it is done by install scripts from nvidia package, but unfortunately it isn't compatible with Qubes...).  See [Updating Bootloader](#updating-bootloader) section above.
 
 ## Manual installation
 
